@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Receipt check">
+<title>Receipt check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Libre+Caslon+Text:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* Receipt check: a no-AI checking screen for a "check file" made in the receipts app.
+   Nothing about any business is in this code: the file brings the entries, photos and Excel template,
+   and they stay on this phone. */
+:root{color-scheme:light dark;
+  --bg:light-dark(#ffffff,#0d1416);--ink:light-dark(#14161a,#e7edee);--muted:light-dark(#5a6670,#93a4ab);
+  --teal:light-dark(#0b5d63,#62c3c8);--teal-ink:light-dark(#ffffff,#06282b);--rule:light-dark(#dfe4e6,#22343a);
+  --paper:light-dark(#f3f6f6,#121d20);--flag:#ff8a1f;--flag-bg:light-dark(#fff0e1,#2a1d10);--flag-ink:light-dark(#8a4200,#ffc58f);
+  --warn:light-dark(#6b5a00,#e7d27a);--warn-bg:light-dark(#fbf5d6,#2e2a10);--bad:light-dark(#a3221b,#ff9c94)}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Inter,system-ui,-apple-system,sans-serif;overflow-x:clip;-webkit-text-size-adjust:100%}
+.wrap{max-width:760px;margin:0 auto;padding:0 16px}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+.serif{font-family:"Libre Caslon Text",Georgia,serif}
+header{padding:20px 0 10px;border-bottom:1px solid var(--rule)}
+.brand{font-weight:600;color:var(--muted);font-size:14px}
+h1{font:700 clamp(28px,8vw,40px)/1.1 "Libre Caslon Text",Georgia,serif;margin:6px 0 4px}
+.sub{color:var(--muted);font-size:14px}
+.figs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0 4px}
+.figs div{border-top:2px solid var(--ink);padding-top:6px}
+.figs dt{font-size:13px;color:var(--muted)}
+.figs dd{margin:0;font-weight:600;font-variant-numeric:tabular-nums}
+.figs .f dd{color:var(--flag-ink)}
+.notice{margin:12px 0;padding:12px 14px;border-radius:12px;background:var(--paper);font-size:15px}
+.notice.bad{color:var(--bad)}
+.notice ol{margin:6px 0 0;padding-left:20px}
+.btn{min-height:50px;border-radius:12px;border:1px solid var(--rule);background:var(--paper);padding:10px 14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;text-align:center}
+.btn.primary{background:var(--teal);border-color:var(--teal);color:var(--teal-ink)}
+.btn.outline{background:transparent;border-color:var(--teal);color:var(--teal)}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--bad)}
+.btn:disabled{opacity:.45;cursor:default}
+.stack{display:grid;gap:8px;margin:16px 0}
+.hint{color:var(--muted);font-size:13px;margin:4px 0 0}
+.month{margin:18px 0 0}
+.month h2{font:700 20px/1.2 "Libre Caslon Text",Georgia,serif;margin:0 0 4px;display:flex;justify-content:space-between;gap:8px}
+.month h2 small{font:500 14px Inter,sans-serif;color:var(--muted)}
+.ledger{list-style:none;margin:0;padding:0;border-top:1px solid var(--ink)}
+.row{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:10px;padding:11px 8px 11px 10px;border-bottom:1px solid var(--rule);cursor:pointer;position:relative}
+.row.flagged{background:var(--flag-bg)}
+.row.flagged::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--flag)}
+.row.gone{opacity:.5;text-decoration:line-through}
+.row .d b{display:block;font:700 20px/1 "Libre Caslon Text",Georgia,serif}
+.row .d span{font-size:12px;color:var(--muted)}
+.row .who b{font-weight:600;display:block;overflow-wrap:anywhere}
+.row .who span{font-size:13px;color:var(--muted)}
+.row .amt{text-align:right}
+.row .amt b{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.row .amt span{display:block;font-size:13px;color:var(--muted);white-space:nowrap}
+.row .ok{color:var(--teal);font-weight:700;margin-right:4px}
+footer{color:var(--muted);font-size:13px;padding:24px 0 40px}
+
+.ck{position:fixed;inset:0;z-index:25;background:var(--bg);display:flex;flex-direction:column}
+.ck[hidden]{display:none}
+.ckbar{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--rule)}
+.ckbar .t{text-align:center;line-height:1.2}
+.ckbar .t b{display:block}
+.ckbar .t span{font-size:13px;color:var(--muted)}
+.ckbar button{min-height:44px;min-width:44px;border:0;background:transparent;border-radius:10px;font-size:15px;font-weight:600;color:var(--teal)}
+.ckbar .x{font-size:22px;color:var(--muted)}
+.ckbody{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.ckcard{flex:1;display:flex;flex-direction:column;min-height:0;position:relative;background:var(--bg)}
+.ckphotowrap{position:relative;flex:1 1 55%;min-height:160px;background:var(--paper)}
+.ckphoto{position:absolute;inset:0;overflow:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.ckphoto .inner{display:flex;min-width:100%;min-height:100%}
+.ckphoto img{display:block;margin:auto;max-width:none;width:100%;height:auto;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.ckph{margin:auto;padding:24px;color:var(--muted);text-align:center}
+.zoom{position:absolute;right:8px;bottom:8px;display:flex;gap:6px;z-index:2}
+.zoom button{min-width:44px;min-height:44px;border-radius:22px;border:1px solid var(--rule);background:color-mix(in srgb,var(--bg) 88%,transparent);font-size:20px;font-weight:600;color:var(--ink)}
+.stamp{position:absolute;top:14px;z-index:3;padding:4px 12px;border:3px solid;border-radius:8px;font-weight:700;font-size:20px;opacity:0;pointer-events:none;background:var(--bg)}
+.stamp.y{left:14px;color:var(--teal);border-color:var(--teal);transform:rotate(-8deg)}
+.stamp.n{right:14px;color:var(--bad);border-color:var(--bad);transform:rotate(8deg)}
+.cklower{flex:0 1 auto;max-height:48%;overflow:auto;padding:12px 16px;border-top:1px solid var(--rule);display:grid;gap:8px;touch-action:pan-y}
+.cklower.fix{flex:0 0 58%;max-height:58%}
+.ckdate{font:700 clamp(22px,6.4vw,28px)/1.1 "Libre Caslon Text",Georgia,serif}
+.ckdate.bad{color:var(--bad)}
+.ckshop{font-weight:600;font-size:18px;overflow-wrap:anywhere}
+.ckgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 14px;margin:0}
+.ckgrid div{border-top:1px solid var(--rule);padding-top:4px}
+.ckgrid dt{font-size:13px;color:var(--muted)}
+.ckgrid dd{margin:0;font-weight:600;font-size:17px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.ckgrid .o dd{color:var(--flag-ink)}
+.why{padding:10px 12px;border-radius:10px;font-size:14px;background:var(--paper)}
+.why.o{background:var(--flag-bg);color:var(--flag-ink)}
+.ckbtns{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;padding:10px 12px 14px;border-top:1px solid var(--rule)}
+.ckbtns .btn{min-height:52px;width:auto}
+.btn.yes{background:var(--teal);border-color:var(--teal);color:var(--teal-ink)}
+.btn.no{background:transparent;border-color:var(--bad);color:var(--bad)}
+.ckdone{margin:auto;text-align:center;padding:24px;max-width:420px}
+.ckdone h3{font:700 26px/1.2 "Libre Caslon Text",Georgia,serif;margin:0 0 8px}
+.form{display:grid;gap:10px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+label.f{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+label.f input,label.f select{min-height:44px;border:1px solid var(--rule);border-radius:10px;padding:8px 10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%}
+.toggle{display:flex;align-items:center;gap:10px;min-height:44px;font-size:15px}
+.toggle input{width:22px;height:22px;accent-color:var(--flag)}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;z-index:40;display:flex;gap:12px;align-items:center;max-width:92vw;font-size:15px}
+#toast[hidden]{display:none}
+#toast button{background:transparent;border:0;color:var(--bg);font-weight:700;text-decoration:underline;min-height:36px}
+.ck:not([hidden]) ~ #toast{bottom:96px}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--rule);border-top-color:var(--teal);border-radius:50%;animation:sp .9s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">Receipt check</div>
+    <h1 id="title">Open a check file</h1>
+    <div class="sub" id="sub">No sign-in and no AI. Everything stays on this phone.</div>
+    <dl class="figs" id="figs" hidden>
+      <div><dt>Checked</dt><dd id="fDone">0</dd></div>
+      <div><dt>To check</dt><dd id="fLeft">0</dd></div>
+      <div class="f"><dt>Orange VAT</dt><dd id="fFlag">0</dd></div>
+    </dl>
+  </header>
+  <main id="main"></main>
+  <footer>This page works offline once loaded. The check file you open stays on this phone and is never uploaded anywhere.</footer>
+</div>
+<input type="file" id="fileIn" accept=".zip,.json,application/zip,application/json" hidden>
+<div class="ck" id="check" hidden role="dialog" aria-modal="true" aria-labelledby="ckTitle">
+  <div class="ckbar"><button class="x" data-act="ckclose" aria-label="Close checking">✕</button><div class="t"><b id="ckTitle">Check receipts</b><span id="ckCount"></span></div><button data-act="ckskip" id="ckSkip">Skip</button></div>
+  <div class="ckbody" id="ckBody"></div>
+</div>
+<div id="toast" role="status" hidden></div>
+
+<script src="export.js"></script>
+<script>
+{
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const money = (n) => (n < 0 ? '−' : '') + '£' + Math.abs(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const toNum = (x) => { if (x == null || x === '') return null; if (typeof x === 'number') return isFinite(x) ? x : null; const n = parseFloat(String(x).replace(/[£,\s]/g, '')); return isFinite(n) ? n : null; };
+const r2 = (n) => Math.round((+n + Number.EPSILON) * 100) / 100;
+const isoOk = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !isNaN(Date.parse(d));
+const vatOf = (e) => (e.vatMode === 'sixth' ? (toNum(e.gross) || 0) / 6 : toNum(e.vat) || 0);
+const byDate = (a, b) => (isoOk(a.date) ? a.date : '9999').localeCompare(isoOk(b.date) ? b.date : '9999') || (a.createdAt || 0) - (b.createdAt || 0);
+const reduced = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+const S = { pack: null, photos: new Map(), edits: {}, ck: { open: false }, loading: false, error: null, sentAt: 0 };
+
+// ---------- saved on this phone ----------
+const IDB = {
+  open() { return new Promise((res, rej) => { const r = indexedDB.open('receipt-check', 1); r.onupgradeneeded = () => r.result.createObjectStore('files'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
+  async put(key, val) { const db = await IDB.open(); return new Promise((res, rej) => { const t = db.transaction('files', 'readwrite'); t.objectStore('files').put(val, key); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); },
+  async get(key) { const db = await IDB.open(); return new Promise((res, rej) => { const t = db.transaction('files', 'readonly'); const r = t.objectStore('files').get(key); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
+};
+const stateKey = () => 'rc-state:' + S.pack.id;
+function saveState() { try { localStorage.setItem(stateKey(), JSON.stringify({ edits: S.edits, sentAt: S.sentAt, changedAt: Date.now() })); } catch {} }
+function loadState() { try { const v = JSON.parse(localStorage.getItem(stateKey()) || 'null'); S.edits = (v && v.edits) || {}; S.sentAt = (v && v.sentAt) || 0; S.changedAt = (v && v.changedAt) || 0; } catch { S.edits = {}; } }
+
+// entries = what the file brought, with this phone's checks and fixes on top
+function entries() { return S.pack.entries.map((e) => ({ ...e, ...(S.edits[e.id] || {}) })); }
+const live = () => entries().filter((e) => !e.deleted);
+function getEntry(id) { const e = S.pack.entries.find((x) => x.id === id); return e ? { ...e, ...(S.edits[id] || {}) } : null; }
+function edit(id, patch) { S.edits[id] = { ...(S.edits[id] || {}), ...patch }; S.changedAt = Date.now(); saveState(); render(); }
+
+// ---------- opening a check file ----------
+async function openFile(file, quiet) {
+  S.loading = true; S.error = null; render();
+  try {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    let pack, photos = new Map();
+    if (buf[0] === 0x7b) { // '{' : the JSON version, photos inside as data URLs
+      pack = JSON.parse(new TextDecoder().decode(buf));
+      for (const [k, v] of Object.entries(pack.photos || {})) photos.set(k, v);
+      delete pack.photos;
+    } else {
+      const files = window.SunMillExport.unzipStore(buf);
+      if (!files['pack.json']) throw new Error('No pack.json');
+      pack = JSON.parse(new TextDecoder().decode(files['pack.json']));
+      for (const [name, bytes] of Object.entries(files)) {
+        const m = /^photos\/(.+)\.jpg$/.exec(name);
+        if (m) photos.set(m[1], URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' })));
+      }
+    }
+    if (!pack || pack.kind !== 'sunmill-check' || !Array.isArray(pack.entries)) throw new Error('Not a check file');
+    for (const u of S.photos.values()) if (String(u).startsWith('blob:')) URL.revokeObjectURL(u);
+    S.pack = pack; S.photos = photos; loadState();
+    if (!quiet) { try { await IDB.put('current', new Blob([buf])); } catch { S.noStore = true; } }
+    S.loading = false; render();
+    if (!quiet) toast(`Opened ${pack.label}.`);
+  } catch (e) {
+    console.error(e);
+    S.loading = false; S.error = "That file couldn't be opened. Pick the file whose name ends in “check file”, exactly as it was saved.";
+    render();
+  }
+}
+
+// ---------- page ----------
+function render() {
+  const p = S.pack;
+  $('#figs').hidden = !p;
+  if (!p) {
+    $('#title').textContent = 'Open a check file';
+    $('#sub').textContent = 'No sign-in and no AI. Everything stays on this phone.';
+    $('#main').innerHTML = `${S.error ? `<div class="notice bad">${esc(S.error)}</div>` : ''}
+      <div class="stack"><button class="btn primary" data-act="open" ${S.loading ? 'disabled' : ''}>${S.loading ? '<span class="spin"></span>Opening…' : 'Open check file'}</button></div>
+      <div class="notice"><b>How to find it</b><ol>
+        <li>Tap <b>Open check file</b>, then <b>Browse</b>.</li>
+        <li>Under Locations, tap <b>Drive</b> (you need the Google Drive app, signed in to your Gmail). If it isn't listed, tap <b>…</b> and switch it on.</li>
+        <li>Go to <b>Shared with me</b> and pick the file ending in <b>check file</b>.</li></ol></div>`;
+    renderCheck();
+    return;
+  }
+  const all = live(), done = all.filter((e) => e.checked).length, left = all.length - done;
+  $('#title').textContent = p.label;
+  $('#sub').textContent = `Check file made ${new Date(p.madeAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · ${all.length} entries`;
+  $('#fDone').textContent = done; $('#fLeft').textContent = left; $('#fFlag').textContent = all.filter((e) => e.orange).length;
+  const unsent = Object.keys(S.edits).length && S.changedAt > S.sentAt;
+  let h = `${S.noStore ? '<div class="notice">This phone would not save the file, so if you close the page you will need to open the file again. Your ticks are still kept.</div>' : ''}
+    <div class="stack">
+      <button class="btn primary" data-act="check" ${all.length ? '' : 'disabled'}>✓ Check receipts${left ? ` · ${left} to check` : ' · all checked'}</button>
+      <button class="btn outline" data-act="send">Send checked file back${unsent ? ' · not sent yet' : ''}</button>
+      <button class="btn" data-act="excel">Download Excel</button>
+    </div>
+    <p class="hint">Send the checked file back so the person who made it can import your ticks and fixes. Download Excel if you are submitting the figures yourself.</p>`;
+  const groups = new Map(), other = [];
+  for (const ym of p.quarter.months) groups.set(ym, []);
+  for (const e of entries()) { const ym = isoOk(e.date) ? e.date.slice(0, 7) : null; if (ym && groups.has(ym)) groups.get(ym).push(e); else other.push(e); }
+  const block = (title, arr) => `<section class="month"><h2>${esc(title)} <small>${arr.filter((e) => !e.deleted).length} · ${money(arr.filter((e) => !e.deleted).reduce((s, e) => s + (toNum(e.gross) || 0), 0))}</small></h2><ul class="ledger">${arr.sort(byDate).map(rowHtml).join('') || '<li class="row" style="cursor:default;color:var(--muted)"><span></span><span>Nothing here.</span></li>'}</ul></section>`;
+  for (const [ym, arr] of groups) { const [y, m] = ym.split('-').map(Number); h += block(`${MONTHS[m - 1]} ${y}`, arr); }
+  if (other.length) h += block('Whole quarter, no date or outside the quarter', other);
+  h += `<div class="stack" style="margin-top:24px"><button class="btn ghost" data-act="open">Open a different check file</button></div>`;
+  $('#main').innerHTML = h;
+  renderCheck();
+}
+function rowHtml(e) {
+  const d = isoOk(e.date) ? new Date(e.date + 'T12:00:00Z') : null;
+  const day = d ? `<b>${d.getUTCDate()}</b><span>${d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}</span>` : `<span>${esc(e.date || 'no date')}</span>`;
+  return `<li class="row${e.orange ? ' flagged' : ''}${e.deleted ? ' gone' : ''}" data-act="openrow" data-id="${esc(e.id)}" tabindex="0">
+    <div class="d">${day}</div>
+    <div class="who"><b>${e.checked && !e.deleted ? '<span class="ok" aria-label="Checked">✓</span>' : ''}${esc(e.name || 'Unknown shop')}</b><span>${esc(e.category || '')} · ${esc(e.payment || '')}${e.deleted ? ' · deleted' : ''}</span></div>
+    <div class="amt"><b>${toNum(e.gross) == null ? '—' : money(toNum(e.gross))}</b><span>VAT ${money(vatOf(e))}${e.vatMode === 'sixth' ? ' (1/6)' : ''}</span></div></li>`;
+}
+
+// ---------- check screen ----------
+function openCheck(id) {
+  S.ck = { open: true, id: id || null, pinned: !!id, mode: 'card', skipped: new Set(), zoom: 1, shown: null };
+  $('#check').hidden = false; document.body.style.overflow = 'hidden';
+  renderCheck();
+}
+function closeCheck() { S.ck.open = false; $('#check').hidden = true; document.body.style.overflow = ''; render(); }
+function ckPick() {
+  if (S.ck.pinned && S.ck.id) { const e = getEntry(S.ck.id); if (e && !e.deleted) return e; }
+  S.ck.pinned = false;
+  const un = live().filter((e) => !e.checked).sort(byDate);
+  if (S.ck.id) { const e = un.find((x) => x.id === S.ck.id); if (e) return e; }
+  const fresh = un.filter((e) => !S.ck.skipped.has(e.id));
+  if (fresh.length) return fresh[0];
+  if (un.length) { S.ck.skipped.clear(); return un[0]; }
+  return null;
+}
+function renderCheck() {
+  if (!S.ck.open || !S.pack) return;
+  const all = live(), done = all.filter((e) => e.checked).length;
+  $('#ckCount').textContent = `${done} of ${all.length} checked`;
+  if (S.ck.mode === 'fix') return;
+  const e = ckPick(), body = $('#ckBody');
+  $('#ckSkip').hidden = !e || S.ck.pinned;
+  if (!e) {
+    S.ck.id = null; S.ck.shown = null;
+    body.innerHTML = `<div class="ckdone"><h3>All checked</h3><p>All ${all.length} entries are marked correct. Now send the checked file back.</p><div class="stack"><button class="btn primary" data-act="send">Send checked file back</button><button class="btn" data-act="ckclose">Back to the list</button></div></div>`;
+    return;
+  }
+  if (S.ck.id !== e.id || !$('#ckCard')) {
+    S.ck.id = e.id; S.ck.zoom = 1; S.ck.shown = null;
+    body.innerHTML = `<div class="ckcard" id="ckCard">
+        <div class="stamp y" id="stY">Correct</div><div class="stamp n" id="stN">Fix</div>
+        <div class="ckphotowrap"><div class="ckphoto" id="ckPhoto"></div>
+          <div class="zoom"><button data-act="ckzout" aria-label="Zoom out">−</button><button data-act="ckzin" aria-label="Zoom in">+</button></div></div>
+        <div class="cklower" id="ckLower"></div>
+      </div><div class="ckbtns" id="ckBtns"></div>`;
+    const src = e.photo ? S.photos.get(e.photo) : null;
+    $('#ckPhoto').innerHTML = src ? `<div class="inner"><img id="ckImg" alt="Receipt photo" draggable="false" src="${esc(src)}"></div>` : `<div class="ckph">${e.source === 'manual' ? 'Typed in by hand, so there is no photo.' : 'No photo in the file for this entry.'}</div>`;
+  }
+  const key = JSON.stringify([e.date, e.name, e.gross, e.vat, e.vatMode, e.payment, e.category, e.orange, e.checked]);
+  if (S.ck.shown !== key) { $('#ckLower').className = 'cklower'; $('#ckLower').innerHTML = ckFields(e); S.ck.shown = key; }
+  $('#ckBtns').innerHTML = `<button class="btn no" data-act="ckno">✗ Wrong</button><button class="btn danger ghost" data-act="ckdel">Delete</button><button class="btn yes" data-act="ckyes">✓ Correct</button>`;
+}
+function ckFields(e) {
+  const q = S.pack.quarter, iso = isoOk(e.date);
+  const d = iso ? new Date(e.date + 'T12:00:00Z') : null;
+  const out = iso && (e.date < q.start || e.date > q.end);
+  const dateTxt = d ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : (e.date ? `${e.date} (whole quarter)` : 'No date');
+  const notes = [];
+  if (!e.date) notes.push('No date was found on this photo.');
+  if (out) notes.push(`This date is outside ${q.label}.`);
+  if (e.unclear) notes.push('Hard to read: ' + e.unclear);
+  const k = e.date + '|' + r2(toNum(e.gross) || 0);
+  if (e.date && live().filter((x) => x.date + '|' + r2(toNum(x.gross) || 0) === k).length > 1) notes.push('Possible duplicate: another entry has the same date and total.');
+  if (e.checked) notes.push('Already marked correct.');
+  const g = toNum(e.gross);
+  return `<div class="ckdate${out || !e.date ? ' bad' : ''}">${esc(dateTxt)}</div>
+    <div class="ckshop">${esc(e.name || 'Unknown shop')}</div>
+    <dl class="ckgrid">
+      <div><dt>Total</dt><dd>${g == null ? '—' : money(g)}</dd></div>
+      <div class="${e.orange ? 'o' : ''}"><dt>VAT${e.orange ? ' · orange' : ''}</dt><dd>${money(vatOf(e))}${e.vatMode === 'sixth' ? ' (1/6)' : ''}</dd></div>
+      <div><dt>Paid by</dt><dd>${esc(e.payment || '—')}</dd></div>
+      <div><dt>Type</dt><dd>${esc(e.category || '—')}</dd></div>
+    </dl>
+    ${e.orange && e.flagReason ? `<div class="why o">${esc(e.flagReason)}</div>` : ''}
+    ${notes.map((n) => `<div class="why">${esc(n)}</div>`).join('')}
+    <p class="hint" style="margin:0">Swipe right if it's all correct, left to fix it.</p>`;
+}
+function applyZoom(z, ax, ay) {
+  const box = $('#ckPhoto'), img = $('#ckImg'); if (!box || !img) return;
+  z = Math.min(6, Math.max(1, z));
+  const old = S.ck.zoom || 1, cw = box.clientWidth;
+  const px = ax ?? box.clientWidth / 2, py = ay ?? box.clientHeight / 2;
+  const fx = (box.scrollLeft + px) / (cw * old), fy = (box.scrollTop + py) / Math.max(1, img.offsetHeight);
+  img.style.width = (cw * z) + 'px';
+  S.ck.zoom = z;
+  box.style.touchAction = z > 1.01 ? 'pan-x pan-y' : 'pan-y';
+  box.scrollLeft = fx * cw * z - px;
+  box.scrollTop = fy * img.offsetHeight - py;
+}
+function dragCard(dx, animate) {
+  const c = $('#ckCard'); if (!c) return;
+  c.style.transition = animate && !reduced() ? 'transform .2s ease' : 'none';
+  c.style.transform = dx ? `translateX(${dx}px) rotate(${dx / 40}deg)` : '';
+  $('#stY').style.opacity = String(Math.max(0, Math.min(1, dx / 90)));
+  $('#stN').style.opacity = String(Math.max(0, Math.min(1, -dx / 90)));
+}
+function flyOut(dir, then) {
+  const c = $('#ckCard');
+  if (!c || reduced()) { then(); return; }
+  c.style.transition = 'transform .22s ease-in, opacity .22s';
+  c.style.transform = `translateX(${dir * 120}%) rotate(${dir * 10}deg)`; c.style.opacity = '0';
+  setTimeout(then, 200);
+}
+function ckYes() {
+  const e = getEntry(S.ck.id); if (!e || S.ck.mode !== 'card') return;
+  flyOut(1, () => {
+    S.ck.id = null; S.ck.pinned = false;
+    edit(e.id, { checked: true });
+    toast('Marked correct.', 'Undo', () => { S.ck.id = e.id; S.ck.pinned = true; S.ck.mode = 'card'; edit(e.id, { checked: e.checked }); });
+  });
+}
+function ckNo() {
+  const e = getEntry(S.ck.id); if (!e) return;
+  dragCard(0, true);
+  S.ck.mode = 'fix';
+  const whole = e.date && !isoOk(e.date);
+  const mode = e.vatMode === 'sixth' ? 'sixth' : (toNum(e.vat) === 0 ? 'zero' : 'num');
+  const opt = (list, v) => (list.includes(v) || !v ? list : [v, ...list]).map((x) => `<option${x === v ? ' selected' : ''}>${esc(x)}</option>`).join('');
+  const low = $('#ckLower');
+  low.className = 'cklower fix';
+  low.innerHTML = `<form class="form" id="ckForm">
+      <div class="grid2">
+        <label class="f">Date<input type="date" id="c_date" value="${isoOk(e.date) ? e.date : ''}" ${whole ? 'disabled' : ''}></label>
+        <label class="f">Total incl. VAT<input id="c_gross" inputmode="decimal" value="${toNum(e.gross) ?? ''}"></label>
+      </div>
+      <label class="toggle"><input type="checkbox" id="c_whole" ${whole ? 'checked' : ''}> No single date: covers the whole quarter</label>
+      <label class="f">Shop<input id="c_name" value="${esc(e.name)}" autocapitalize="characters"></label>
+      <div class="grid2">
+        <label class="f">VAT worked out as<select id="c_mode">
+          <option value="num"${mode === 'num' ? ' selected' : ''}>Amount on receipt</option>
+          <option value="sixth"${mode === 'sixth' ? ' selected' : ''}>1/6 of total</option>
+          <option value="zero"${mode === 'zero' ? ' selected' : ''}>No VAT</option></select></label>
+        <label class="f">VAT<input id="c_vat" inputmode="decimal" value="${mode === 'sixth' ? r2(vatOf(e)).toFixed(2) : (toNum(e.vat) ?? '')}" ${mode === 'num' ? '' : 'readonly'}></label>
+      </div>
+      <div class="grid2">
+        <label class="f">Paid by<select id="c_pay">${opt(S.pack.payment || [], e.payment)}</select></label>
+        <label class="f">Type<select id="c_cat">${opt(S.pack.categories || [], e.category)}</select></label>
+      </div>
+      <label class="toggle"><input type="checkbox" id="c_orange" ${e.orange ? 'checked' : ''}> Highlight VAT orange in Excel</label>
+    </form>`;
+  $('#ckBtns').innerHTML = `<button class="btn" data-act="ckcancel">Cancel</button><span></span><button class="btn primary" data-act="cksave">Save and recheck</button>`;
+  $('#ckSkip').hidden = true;
+  low.scrollTop = 0;
+}
+function ckSyncVat() {
+  const m = $('#c_mode').value, g = toNum($('#c_gross').value), v = $('#c_vat');
+  if (m === 'sixth') { v.value = g == null ? '' : r2(g / 6).toFixed(2); v.readOnly = true; }
+  else if (m === 'zero') { v.value = '0'; v.readOnly = true; }
+  else v.readOnly = false;
+}
+function ckSave() {
+  const e = getEntry(S.ck.id); if (!e) { S.ck.mode = 'card'; renderCheck(); return; }
+  const g = toNum($('#c_gross').value);
+  if (g == null) { toast('Enter the total.'); $('#c_gross').focus(); return; }
+  const m = $('#c_mode').value, orange = $('#c_orange').checked;
+  const patch = {
+    date: $('#c_whole').checked ? (S.pack.quarter.short || e.date) : ($('#c_date').value || ''),
+    name: $('#c_name').value.trim().toUpperCase(), gross: g,
+    vatMode: m === 'sixth' ? 'sixth' : 'num', vat: m === 'sixth' ? r2(g / 6) : m === 'zero' ? 0 : (toNum($('#c_vat').value) ?? 0),
+    payment: $('#c_pay').value, category: $('#c_cat').value, orange, checked: false, corrected: true, unclear: '',
+  };
+  if (orange !== e.orange) patch.flagReason = orange ? 'Marked orange by hand.' : '';
+  if (document.activeElement) document.activeElement.blur();
+  S.ck.mode = 'card'; S.ck.shown = null; S.ck.pinned = true;
+  edit(e.id, patch);
+  toast('Saved. Swipe right to confirm it.');
+}
+function ckCancel() { if (document.activeElement) document.activeElement.blur(); S.ck.mode = 'card'; S.ck.shown = null; renderCheck(); }
+{
+  const ck = $('#check');
+  let sw = null, pinch = null, lastTap = 0;
+  const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  ck.addEventListener('touchstart', (ev) => {
+    const box = $('#ckPhoto'); const inPhoto = box && box.contains(ev.target);
+    if (ev.touches.length === 2 && inPhoto) {
+      const [a, b] = ev.touches, r = box.getBoundingClientRect();
+      pinch = { d0: dist(a, b), z0: S.ck.zoom, x: (a.clientX + b.clientX) / 2 - r.left, y: (a.clientY + b.clientY) / 2 - r.top };
+      sw = null; ev.preventDefault(); return;
+    }
+    if (ev.touches.length !== 1 || S.ck.mode !== 'card' || !ev.target.closest('#ckCard') || ev.target.closest('button')) { sw = null; return; }
+    if (inPhoto && S.ck.zoom > 1.01) { sw = null; return; }
+    const t = ev.touches[0];
+    sw = { x: t.clientX, y: t.clientY, dx: 0, on: false, inPhoto, t0: Date.now() };
+  }, { passive: false });
+  ck.addEventListener('touchmove', (ev) => {
+    if (pinch && ev.touches.length === 2) { ev.preventDefault(); applyZoom(pinch.z0 * dist(ev.touches[0], ev.touches[1]) / pinch.d0, pinch.x, pinch.y); return; }
+    if (!sw || ev.touches.length !== 1) return;
+    const t = ev.touches[0], dx = t.clientX - sw.x, dy = t.clientY - sw.y;
+    if (!sw.on) {
+      if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.3) sw.on = true;
+      else if (Math.abs(dy) > 12) { sw = null; return; }
+    }
+    if (sw.on) { ev.preventDefault(); sw.dx = dx; dragCard(dx); }
+  }, { passive: false });
+  ck.addEventListener('touchend', (ev) => {
+    if (pinch && ev.touches.length < 2) { pinch = null; return; }
+    if (!sw) return;
+    const s = sw; sw = null;
+    if (!s.on) {
+      if (s.inPhoto && Date.now() - s.t0 < 300) {
+        const now = Date.now();
+        if (now - lastTap < 320) { const r = $('#ckPhoto').getBoundingClientRect(); applyZoom(S.ck.zoom > 1.5 ? 1 : 2.5, s.x - r.left, s.y - r.top); lastTap = 0; } else lastTap = now;
+      }
+      return;
+    }
+    if (s.dx > 90) ckYes(); else if (s.dx < -90) ckNo(); else dragCard(0, true);
+  });
+  ck.addEventListener('touchcancel', () => { if (sw && sw.on) dragCard(0, true); sw = null; pinch = null; });
+  ck.addEventListener('dblclick', (ev) => { const box = $('#ckPhoto'); if (!box || !box.contains(ev.target)) return; const r = box.getBoundingClientRect(); applyZoom(S.ck.zoom > 1.5 ? 1 : 2.5, ev.clientX - r.left, ev.clientY - r.top); });
+  ck.addEventListener('input', (ev) => { if (ev.target.id === 'c_gross') ckSyncVat(); });
+  ck.addEventListener('change', (ev) => {
+    if (ev.target.id === 'c_mode') { ckSyncVat(); if (ev.target.value === 'sixth') $('#c_orange').checked = true; }
+    if (ev.target.id === 'c_whole') $('#c_date').disabled = ev.target.checked;
+  });
+  ck.addEventListener('submit', (ev) => { ev.preventDefault(); ckSave(); });
+}
+
+// ---------- files out ----------
+function saveBlob(blob, filename) {
+  const a = document.createElement('a'); const url = URL.createObjectURL(blob);
+  a.href = url; a.download = filename; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+async function sendBack() {
+  const p = S.pack;
+  const out = { kind: 'sunmill-checked', version: 1, packId: p.id, quarter: p.quarter.id, rev: p.rev || 1, label: p.label, at: new Date().toISOString(),
+    entries: entries().map((e) => ({ id: e.id, date: e.date, name: e.name, gross: toNum(e.gross), vat: toNum(e.vat), vatMode: e.vatMode, payment: e.payment, category: e.category,
+      orange: !!e.orange, flagReason: e.flagReason || '', checked: !!e.checked, corrected: !!e.corrected, deleted: !!e.deleted })) };
+  const name = p.filename.replace(/\.xlsx$/, '') + ' - checked.json';
+  const file = new File([JSON.stringify(out)], name, { type: 'application/json' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); }
+    else saveBlob(file, name);
+    S.sentAt = Date.now(); saveState(); render();
+    toast('Checked file ready. Save it to the shared Google Drive folder, or send it directly.');
+  } catch (e) { if (e && e.name === 'AbortError') toast('Not sent.'); else { saveBlob(file, name); S.sentAt = Date.now(); saveState(); render(); } }
+}
+function downloadExcel() {
+  const p = S.pack;
+  try {
+    const exp = live().sort(byDate).map((e) => ({ date: e.date, invoiceNo: e.invoiceNo, name: e.name, desc: e.desc, category: e.category, payment: e.payment, gross: toNum(e.gross), vat: toNum(e.vat), vatMode: e.vatMode, orange: !!e.orange }));
+    const sales = (p.income || []).filter((l) => String(l.name || '').trim() || toNum(l.gross) != null)
+      .map((l) => ({ date: '', invoiceNo: '', name: '', desc: l.name, category: l.category, payment: l.payment, gross: toNum(l.gross), vat: toNum(l.vat) ?? (toNum(l.gross) == null ? null : 0), vatMode: 'num', orange: false }));
+    const { bytes } = window.SunMillExport.build(p.template, { period: `${p.quarter.label} (${p.quarter.period})`, sales, expenses: exp });
+    saveBlob(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), p.filename);
+    toast('Excel file downloaded.');
+  } catch (e) { console.error(e); toast('Could not build the Excel file.'); }
+}
+
+// ---------- toast ----------
+let toastTimer = null;
+function toast(msg, actLabel, act) {
+  const t = $('#toast'); t.innerHTML = ''; const s = document.createElement('span'); s.textContent = msg; t.append(s);
+  if (actLabel) { const b = document.createElement('button'); b.textContent = actLabel; b.onclick = () => { t.hidden = true; act(); }; t.append(b); }
+  t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, actLabel ? 8000 : 4000);
+}
+
+// ---------- events ----------
+document.addEventListener('click', (ev) => {
+  const el = ev.target.closest('[data-act]'); if (!el) return;
+  const act = el.dataset.act;
+  if (act === 'open') {
+    const unsent = S.pack && Object.keys(S.edits).length && S.changedAt > S.sentAt;
+    if (unsent && !el.dataset.sure) { el.dataset.sure = '1'; el.textContent = 'Your checks are not sent back yet. Tap again to open another file anyway'; return; }
+    $('#fileIn').click();
+  }
+  else if (act === 'check') openCheck();
+  else if (act === 'openrow') openCheck(el.dataset.id);
+  else if (act === 'ckclose') closeCheck();
+  else if (act === 'ckyes') ckYes();
+  else if (act === 'ckno') ckNo();
+  else if (act === 'ckskip') { if (S.ck.id) S.ck.skipped.add(S.ck.id); S.ck.id = null; S.ck.pinned = false; renderCheck(); }
+  else if (act === 'ckcancel') ckCancel();
+  else if (act === 'cksave') ckSave();
+  else if (act === 'ckzin') applyZoom((S.ck.zoom || 1) * 1.6);
+  else if (act === 'ckzout') applyZoom((S.ck.zoom || 1) / 1.6);
+  else if (act === 'ckdel') {
+    if (el.dataset.sure) { const id = S.ck.id; S.ck.id = null; S.ck.pinned = false; edit(id, { deleted: true }); toast('Deleted.', 'Undo', () => edit(id, { deleted: false })); }
+    else { el.dataset.sure = '1'; el.textContent = 'Tap again'; setTimeout(() => { if (el.isConnected) { delete el.dataset.sure; el.textContent = 'Delete'; } }, 4000); }
+  }
+  else if (act === 'send') sendBack();
+  else if (act === 'excel') downloadExcel();
+});
+document.addEventListener('keydown', (ev) => {
+  if (S.ck.open && S.ck.mode === 'card' && !/INPUT|SELECT|TEXTAREA/.test(ev.target.tagName)) {
+    if (ev.key === 'ArrowRight') { ev.preventDefault(); ckYes(); }
+    else if (ev.key === 'ArrowLeft') { ev.preventDefault(); ckNo(); }
+    else if (ev.key === 'Escape') closeCheck();
+  }
+  if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches && ev.target.matches('.row')) { ev.preventDefault(); ev.target.click(); }
+});
+$('#fileIn').addEventListener('change', (ev) => { const f = ev.target.files[0]; ev.target.value = ''; if (f) openFile(f); });
+
+render();
+(async () => { try { const b = await IDB.get('current'); if (b) await openFile(b, true); } catch {} })();
+}
+</script>
+</body>
+</html>
