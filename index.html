@@ -132,7 +132,7 @@ label.f input,label.f select{min-height:44px;border:1px solid var(--rule);border
   <main id="main"></main>
   <footer>This page works offline once loaded. The check file you open stays on this phone and is never uploaded anywhere.</footer>
 </div>
-<input type="file" id="fileIn" accept=".zip,.json,application/zip,application/json" hidden>
+<input type="file" id="fileIn" hidden>
 <div class="ck" id="check" hidden role="dialog" aria-modal="true" aria-labelledby="ckTitle">
   <div class="ckbar"><button class="x" data-act="ckclose" aria-label="Close checking">✕</button><div class="t"><b id="ckTitle">Check receipts</b><span id="ckCount"></span></div><button data-act="ckskip" id="ckSkip">Skip</button></div>
   <div class="ckbody" id="ckBody"></div>
@@ -172,33 +172,68 @@ function getEntry(id) { const e = S.pack.entries.find((x) => x.id === id); retur
 function edit(id, patch) { S.edits[id] = { ...(S.edits[id] || {}), ...patch }; S.changedAt = Date.now(); saveState(); render(); }
 
 // ---------- opening a check file ----------
+/* Big check files (hundreds of photos) are read in pieces straight from the file, never all at once,
+ * so a phone doesn't run out of memory. Photos are shown from slices of the file itself. */
+async function zipIndex(file) {
+  const size = file.size;
+  const tail = new Uint8Array(await file.slice(Math.max(0, size - 65557)).arrayBuffer());
+  const tdv = new DataView(tail.buffer);
+  let e = -1;
+  for (let i = tail.length - 22; i >= 0; i--) if (tdv.getUint32(i, true) === 0x06054b50) { e = i; break; }
+  if (e < 0) throw new Error('not a zip (no end record)');
+  const count = tdv.getUint16(e + 10, true), cdSize = tdv.getUint32(e + 12, true), cdOff = tdv.getUint32(e + 16, true);
+  const cd = new Uint8Array(await file.slice(cdOff, cdOff + cdSize).arrayBuffer());
+  const dv = new DataView(cd.buffer), dec = new TextDecoder();
+  const out = []; let p = 0;
+  for (let n = 0; n < count; n++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) throw new Error('damaged zip (directory)');
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nlen = dv.getUint16(p + 28, true), xlen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true);
+    const off = dv.getUint32(p + 42, true);
+    out.push({ name: dec.decode(cd.subarray(p + 46, p + 46 + nlen)), method, csize, off });
+    p += 46 + nlen + xlen + clen;
+  }
+  // where each file's data starts (after its local header)
+  for (const it of out) {
+    const h = new DataView(await file.slice(it.off, it.off + 30).arrayBuffer());
+    if (h.getUint32(0, true) !== 0x04034b50) throw new Error('damaged zip (header)');
+    it.start = it.off + 30 + h.getUint16(26, true) + h.getUint16(28, true);
+  }
+  return out;
+}
 async function openFile(file, quiet) {
-  S.loading = true; S.error = null; render();
+  S.loading = true; S.error = null; S.loadMb = Math.round((file.size || 0) / 1048576); render();
   try {
-    const buf = new Uint8Array(await file.arrayBuffer());
+    if (!file.size) throw new Error('the file is empty (it may still be downloading from Drive)');
+    const first = new Uint8Array(await file.slice(0, 2).arrayBuffer());
     let pack, photos = new Map();
-    if (buf[0] === 0x7b) { // '{' : the JSON version, photos inside as data URLs
-      pack = JSON.parse(new TextDecoder().decode(buf));
+    if (first[0] === 0x7b) { // '{' : the JSON version, photos inside as data URLs
+      pack = JSON.parse(await file.text());
       for (const [k, v] of Object.entries(pack.photos || {})) photos.set(k, v);
       delete pack.photos;
-    } else {
-      const files = window.SunMillExport.unzipStore(buf);
-      if (!files['pack.json']) throw new Error('No pack.json');
-      pack = JSON.parse(new TextDecoder().decode(files['pack.json']));
-      for (const [name, bytes] of Object.entries(files)) {
-        const m = /^photos\/(.+)\.jpg$/.exec(name);
-        if (m) photos.set(m[1], URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' })));
+    } else if (first[0] === 0x50 && first[1] === 0x4b) { // 'PK' : zip
+      const items = await zipIndex(file);
+      const pj = items.find((x) => x.name === 'pack.json');
+      if (!pj) throw new Error('no pack.json inside');
+      if (items.some((x) => x.method !== 0)) throw new Error('the zip was re-compressed after saving');
+      pack = JSON.parse(await file.slice(pj.start, pj.start + pj.csize).text());
+      for (const it of items) {
+        const m = /^photos\/(.+)\.jpg$/.exec(it.name);
+        if (m) photos.set(m[1], URL.createObjectURL(file.slice(it.start, it.start + it.csize, 'image/jpeg')));
       }
-    }
-    if (!pack || pack.kind !== 'sunmill-check' || !Array.isArray(pack.entries)) throw new Error('Not a check file');
+    } else throw new Error('not a check file (unknown format)');
+    if (!pack || pack.kind !== 'sunmill-check' || !Array.isArray(pack.entries)) throw new Error('not a check file');
     for (const u of S.photos.values()) if (String(u).startsWith('blob:')) URL.revokeObjectURL(u);
     S.pack = pack; S.photos = photos; loadState();
-    if (!quiet) { try { await IDB.put('current', new Blob([buf])); } catch { S.noStore = true; } }
     S.loading = false; render();
-    if (!quiet) toast(`Opened ${pack.label}.`);
+    if (!quiet) {
+      toast(`Opened ${pack.label}.`);
+      try { await IDB.put('current', file); S.noStore = false; } catch { S.noStore = true; render(); }
+    }
   } catch (e) {
     console.error(e);
-    S.loading = false; S.error = "That file couldn't be opened. Pick the file whose name ends in “check file”, exactly as it was saved.";
+    S.loading = false;
+    S.error = `That file couldn't be opened (${e && e.message ? e.message : 'unknown problem'}). Pick the file whose name ends in “check file”, exactly as it was saved.`;
     render();
   }
 }
@@ -211,7 +246,7 @@ function render() {
     $('#title').textContent = 'Open a check file';
     $('#sub').textContent = 'No sign-in and no AI. Everything stays on this phone.';
     $('#main').innerHTML = `${S.error ? `<div class="notice bad">${esc(S.error)}</div>` : ''}
-      <div class="stack"><button class="btn primary" data-act="open" ${S.loading ? 'disabled' : ''}>${S.loading ? '<span class="spin"></span>Opening…' : 'Open check file'}</button></div>
+      <div class="stack"><button class="btn primary" data-act="open" ${S.loading ? 'disabled' : ''}>${S.loading ? `<span class="spin"></span>Opening${S.loadMb ? ` (${S.loadMb} MB)` : ''}…` : 'Open check file'}</button></div>
       <div class="notice"><b>How to find it</b><ol>
         <li>Tap <b>Open check file</b>, then <b>Browse</b>.</li>
         <li>Under Locations, tap <b>Drive</b> (you need the Google Drive app, signed in to your Gmail). If it isn't listed, tap <b>…</b> and switch it on.</li>
